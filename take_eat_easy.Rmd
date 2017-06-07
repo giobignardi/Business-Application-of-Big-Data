@@ -1,0 +1,167 @@
+---
+title: "Take Eat Easy"
+author: "giovanni"
+date: "March 8, 2017"
+output: html_document
+---
+
+```{r, comment=NA}
+# Load data
+mad_data <- read.csv("http://www.ekonlab.com/innova_bbva/data/madMergedExpanded.csv")
+```
+
+These data are legally borrowed from a BBVA's project, part of the InnovaChallenge.
+Coordinates, ratings and other statistics concerning commercial activities are collected from Google Places by the bank (it'd be needed a pay account to do the same work, luckily the bank provide the dataset).
+Informations on daily payments come directly out of BBVA's own coffers!
+
+```{r, comment=NA}
+str(mad_data)
+food_data <- subset(mad_data,category=="food")
+str(food_data)
+```
+
+Check levels of Madrid evaluation of places and delete the ones with 0
+```{r, comment=NA}
+unique(food_data$valuedPlaces)
+
+madrid_value <- food_data[mad_data$valuedPlaces>0,]
+
+```
+
+Regression model: evaluate the number of PaymentsDensity (per km^2) by the number of places (per km^2) and evaluation average (from Google Places).
+```{r, comment=NA}
+model_mad <- lm(numPaymentsDensity ~ numPlacesDensity + valueAvg,data=madrid_value)
+summary(model_mad)
+
+```
+
+The number of BBVA payments depends on the PlacesDensity, not on the valueAvg. Then I will discard this last statistic for further developments and I'll focus on optimise revenues-costs in relation to area densities and distances between areas.
+
+The thing is that fo a company like take eat easy there is an important constraint which is determined by the costs of increasing delivery times (math.ly defined below).
+Thus, the target areas must be chosen not only according to the recorded PaymentDensity, but as well considering the distance of every area from other hoods. Take into account that BBVA measures take into account expenditure of people going out for dinner, while take eat easy target are lazy or time saving consumers who prefer to order; then it could be possible that a neighborhood with a district with only a few restaurant can bring more revenues than an area like malasaña, where young people are more prone to have a quick walk to get dinner in one of the dozens of places. (In the end we'll se that malasaña will be still selected due to the high number of catering services and the strategic central position in Madrid).
+
+***
+
+Coordinates and postCode of the place with the max density
+```{r, comment=NA}
+(max_ord=food_data[which.max(food_data$numPlacesDensity),])
+```
+
+
+
+The TakeEatEasy Problem
+
+About 1/3 of our customers become “active customers”, and once “hooked” order on average 1,5x/month.
+
+On each order, we charge the restaurant a 25-30% commission, and a 2,5€ delivery fee to the customer. With this c. 10€ of net revenue / order, we then have to pay the bicycle courier.
+
+Courier utilisation is one of the most important metrics in our business. Assuming couriers need to make minimum 15€ / hour not to churn, a low courier utilisation (<1,5 deliveries / courier / hour) implies a negative contribution margin.
+
+## Constraints:
+
+#### Revenues
+```{r, comment=NA}
+retain = food_data$numPayments/3
+
+# arbitrary
+order_val = 25 # because they state to have around 10€ of revenues
+
+food_data$revs = retain*(0.25*order_val + 2.5)
+```
+
+#### Costs
+
+First I draw a polygon with the coordinates of those restaurants which could be reachable in reasonable times by bike or motorcycle.
+
+Then I get the centroid of that polygon using a geosphere library's function and calculate the distance of every coordinates pair from the centroid.
+```{r, comment=NA}
+
+library(geosphere)
+
+# Delivery Distance
+poly=cbind(food_data$lat,food_data$long) #demasiado largo para entregas en bici o moto
+
+food_data_restr <- food_data[food_data$numPaymentsDensity>quantile(food_data$numPayments)[[2]],] # only places with numPaymentsDensity > 1st quartile NumPayments 
+
+# In that way, to define the polygon, I select only places with num payment density (a measure bounded to area size) higher than the first quantile of numPayments (not dependent from area size, thus it will be a stricter boundary than the first quantile of numPaymentDensity)
+
+poly=cbind(food_data_restr$lat,food_data_restr$long)
+centroid=centroid(poly)
+
+food_data$distance = seq(1:55) # declare new col
+library(geosphere)
+for(i in seq(1:55)){
+  food_data$distance[i]=distCosine(
+    c(food_data$lat[i],food_data$long[i]),
+    centroid)/1000
+}
+
+# cost  
+bike_avg_speed = 15.5 # km/h
+
+# €/h * 2*km * h/km
+food_data$cost = retain*(15*(2*food_data$distance)/bike_avg_speed)
+```
+
+Library(geosphere) 
+function: bearing Direction of travel
+Description >
+Get the initial bearing (direction; azimuth) to go from point p1 to point p2 (in longitude/latitude)
+following the shortest path on an ellipsoid (geodetic). Note that the bearing of travel changes
+continuously while going along the path. A route with constant bearing is a rhumb line (see
+bearingRhumb).
+
+function: distCosine ’Law of cosines’ great circle distance
+Description
+The shortest distance between two points (i.e., the ’great-circle-distance’ or ’as the crow flies’),
+according to the ’law of the cosines’. This method assumes a spherical earth, ignoring ellipsoidal
+effects.
+
+
+***
+***
+
+##Profits (€) and target areas
+```{r, comment=NA}
+food_data$profit = food_data$revs - food_data$cost
+
+target = food_data[food_data$profit>1, c('postalCode', 'profit', 'numPlaces')]
+
+colnames(target) = c('postalCode', 'profit €', 'num Restaurants')
+
+(target = target[order(-target$`profit €`),])
+```
+
++  28004 Gran Via / Malasaña / Chueca
++  28020 Tetùan / Cuatro Caminos
++  28006 Salamanca / Castellana
++  28001 Salamanca
++  28013 Callao
++  28003 Universidad!
++  28015 Malasaña
+
+I don't trust TakeEatEasy declaration of the average 10€ gross revenues per order, because it consider orders of around 25€ each; I suppose that the real daily profits would be quite smaller.
+```{r, comment=NA}
+
+```
+
+```{r, comment=NA}
+
+```
+
+```{r, comment=NA}
+
+```
+
+```{r, comment=NA}
+
+```
+
+```{r, comment=NA}
+
+```
+
+```{r, comment=NA}
+
+```
+
